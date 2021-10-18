@@ -4,7 +4,13 @@
 
 #include <CppADCodeGenEigenPy/ADModel.h>
 
+#include "dynamics_model.h"
+
 namespace ad = CppADCodeGenEigenPy;
+
+// TODO:
+// * just make some external functions that have a nice API for C++ and
+//   readability use, and then call them as needed from these wrappers
 
 const size_t STATE_DIM = 7 + 6;
 const size_t INPUT_DIM = 6;
@@ -12,12 +18,16 @@ const size_t NUM_TIME_STEPS = 1;  // 10
 const size_t NUM_INPUT = INPUT_DIM * NUM_TIME_STEPS;
 
 template <typename Scalar>
-struct ForwardRolloutModel : public ad::ADModel<Scalar> {
+struct RolloutModel : public ad::ADModel<Scalar> {
     using typename ad::ADModel<Scalar>::ADScalar;
     using typename ad::ADModel<Scalar>::ADVector;
     using typename ad::ADModel<Scalar>::ADMatrix;
 
-    using Mat3 = Eigen::Matrix<ADScalar, 3, 3>;
+    using Vec3 = Eigen::Matrix<ADScalar, 3, 1>;
+    using Mat3 = Eigen::Matrix<ADScalar, 3, 3, Eigen::RowMajor>;
+
+    RolloutModel(const DynamicsModel dynamics_model)
+        : dynamics_model(dynamics_model) {}
 
     // Generate the input to the function
     // In this example, the input is the force and torque at each timestep
@@ -27,9 +37,9 @@ struct ForwardRolloutModel : public ad::ADModel<Scalar> {
         // Parameter is the initial state
         ADVector x0(STATE_DIM);
         // clang-format: off
-        x0 << ADVector::Ones(3),                 // position
-              ADVector::Zero(3), ADScalar(1.0),  // orientation (quaternion)
-              ADVector::Ones(6);                 // twist
+        x0 << ADVector::Ones(3),               // position
+            ADVector::Zero(3), ADScalar(1.0),  // orientation (quaternion)
+            ADVector::Ones(6);                 // twist
         // clang-format: on
         return x0;
     }
@@ -43,25 +53,22 @@ struct ForwardRolloutModel : public ad::ADModel<Scalar> {
         return parameters.tail(NUM_TIME_STEPS * STATE_DIM);
     }
 
-    ADVector position(const ADVector& x) const {
-        return x.head(3);
-    }
+    ADVector position(const ADVector& x) const { return x.head(3); }
 
     ADVector angular_velocity(const ADVector& x) const {
         return x.segment(7, 3);
     }
 
-    // Evaluate the function
+    /**
+     * Compute cost of the rollout.
+     */
     ADVector function(const ADVector& input,
                       const ADVector& parameters) const override {
         // Dynamic parameters of the body
-        ADScalar mass(1.0);
-        Mat3 inertia = Mat3::Identity();
-        Mat3 I_inv = inertia.inverse();
+        ADVector dynamic_params = parameters.head(10);
 
         ADVector x0 = initial_state(parameters);
         ADVector xd = desired_state(parameters);
-
 
         Vec3 force = input.head(3);
         Vec3 torque = input.tail(3);
@@ -73,12 +80,10 @@ struct ForwardRolloutModel : public ad::ADModel<Scalar> {
 
         // Integrate
 
-
         ADVector cost(1);
         cost << ADScalar(0);
         return cost;
     }
 
-    // ADScalar mass;
-    // ADMatrix inertia;
+    DynamicsModel dynamics_model;
 };
