@@ -4,30 +4,24 @@
 
 #include <CppADCodeGenEigenPy/ADModel.h>
 
-#include "dynamics_model.h"
+#include "rigid_body.h"
+#include "types.h"
 
 namespace ad = CppADCodeGenEigenPy;
 
-// TODO:
-// * just make some external functions that have a nice API for C++ and
-//   readability use, and then call them as needed from these wrappers
+// * recall that this is a **cost**
+// * input is the array of inputs
+// * paramters are mass, inertia, x0, xd's
 
-const size_t STATE_DIM = 7 + 6;
-const size_t INPUT_DIM = 6;
-const size_t NUM_TIME_STEPS = 1;  // 10
+const double TIMESTEP = 0.1;
+const size_t NUM_TIME_STEPS = 10;
 const size_t NUM_INPUT = INPUT_DIM * NUM_TIME_STEPS;
 
 template <typename Scalar>
-struct RolloutModel : public ad::ADModel<Scalar> {
+struct RolloutCostModel : public ad::ADModel<Scalar> {
     using typename ad::ADModel<Scalar>::ADScalar;
     using typename ad::ADModel<Scalar>::ADVector;
     using typename ad::ADModel<Scalar>::ADMatrix;
-
-    using Vec3 = Eigen::Matrix<ADScalar, 3, 1>;
-    using Mat3 = Eigen::Matrix<ADScalar, 3, 3, Eigen::RowMajor>;
-
-    RolloutModel(const DynamicsModel dynamics_model)
-        : dynamics_model(dynamics_model) {}
 
     // Generate the input to the function
     // In this example, the input is the force and torque at each timestep
@@ -53,10 +47,25 @@ struct RolloutModel : public ad::ADModel<Scalar> {
         return parameters.tail(NUM_TIME_STEPS * STATE_DIM);
     }
 
-    ADVector position(const ADVector& x) const { return x.head(3); }
+    Scalar get_mass(const ADVector& parameters) const { return parameters(0); }
 
-    ADVector angular_velocity(const ADVector& x) const {
-        return x.segment(7, 3);
+    Mat3<ADScalar> get_inertia(const ADVector& parameters) const {
+        ADVector inertia_vec = parameters.segment(1, 3 * 3);
+        Eigen::Map<Mat3<ADScalar>> inertia(inertia_vec.data(), 3, 3);
+        return inertia;
+    }
+
+    std::vector<StateVec<ADScalar>> get_desired_states(
+        const ADVector& parameters) {}
+
+    StateVec<ADScalar> get_initial_state(const ADVector& input) {
+        return input.head(STATE_DIM);
+    }
+
+    std::vector<InputVec<ADScalar>> get_wrenches(const ADVector& input) {
+        std::vector<InputVec<ADScalar>> us;
+        // TODO
+        return us;
     }
 
     /**
@@ -64,26 +73,30 @@ struct RolloutModel : public ad::ADModel<Scalar> {
      */
     ADVector function(const ADVector& input,
                       const ADVector& parameters) const override {
-        // Dynamic parameters of the body
-        ADVector dynamic_params = parameters.head(10);
+        ADScalar mass = get_mass(parameters);
+        Mat3<ADScalar> inertia = get_inertia(parameters);
 
-        ADVector x0 = initial_state(parameters);
-        ADVector xd = desired_state(parameters);
+        // TODO recall there were problems with using fixed-sized matrices with
+        // AD
+        std::vector<StateVec<ADScalar>> xds = get_desired_states(parameters);
+        StateVec<ADScalar> x0 = get_initial_state(input);
+        std::vector<InputVec<ADScalar>> us = get_wrenches(input);
 
-        Vec3 force = input.head(3);
-        Vec3 torque = input.tail(3);
-        Vec3 omega = angular_velocity(x0);
+        // Do the rollout
+        RigidBody<ADScalar> body(mass, inertia);
+        std::vector<StateVec<ADScalar>> xs =
+            body.rollout(x0, us, ADScalar(TIMESTEP), NUM_TIME_STEPS);
 
-        // Newton-Euler equations
-        Vec3 acc_linear = force / mass;
-        Vec3 acc_angular = I_inv * (torque - omega.cross(inertia * omega));
+        // Compute cost
+        // TODO need to compute state error vector
+        ADVector cost = ADVector::Zero(1);
 
-        // Integrate
+        for (int i = 0; i < NUM_TIME_STEPS; ++i) {
+            x_err = ...;
+            cost_i = 0.5 * (x_err.transpose() * x_err + 0.1 * u.transpose() * u);
 
-        ADVector cost(1);
-        cost << ADScalar(0);
+            cost(0) += cost_i
+        }
         return cost;
     }
-
-    DynamicsModel dynamics_model;
 };

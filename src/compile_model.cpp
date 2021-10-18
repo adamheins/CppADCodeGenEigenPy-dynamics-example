@@ -14,11 +14,10 @@ int main(int argc, char **argv) {
     }
     std::string directory_path = argv[1];
 
-    DynamicsModel<Scalar> dynamics_model;
-    // RolloutModel<Scalar> rollout_model(dynamics_model);
-
-    dynamics_model.compile("DynamicsModel", directory_path,
+    DynamicsModel<Scalar>().compile("DynamicsModel", directory_path,
                            ad::DerivativeOrder::Second);
+
+    // RolloutModel<Scalar> rollout_model;
     // rollout_model.compile("RolloutModel", directory_path,
     //                       ad::DerivativeOrder::Second);
 }
