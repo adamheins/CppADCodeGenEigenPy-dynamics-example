@@ -20,6 +20,6 @@ compiler:
 .PHONY: model
 model:
 	@mkdir -p $(LIB_DIR)
-	./$(COMPILER_BIN) $(MODEL_NAME) $(LIB_DIR)
+	./$(COMPILER_BIN) $(LIB_DIR)
 
 

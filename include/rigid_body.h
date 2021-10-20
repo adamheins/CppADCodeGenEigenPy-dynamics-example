@@ -5,8 +5,7 @@
 #include "types.h"
 
 template <typename Scalar>
-class RigidBody {
-   public:
+struct RigidBody {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     RigidBody(const Scalar mass, const Mat3<Scalar>& inertia)
@@ -33,9 +32,9 @@ class RigidBody {
 
     // Roll out the forward dynamics over num_steps time steps, each spaced dt
     // seconds apart.
-    std::vector<StateVec<Scalar>> rollout(const StateVec<Scalar>& x0,
-                 const std::vector<InputVec<Scalar>>& us, const Scalar dt,
-                 const size_t num_steps) const {
+    std::vector<StateVec<Scalar>> rollout(
+        const StateVec<Scalar>& x0, const std::vector<InputVec<Scalar>>& us,
+        const Scalar dt, const size_t num_steps) const {
         StateVec<Scalar> x = x0;
         std::vector<StateVec<Scalar>> xs;
         for (InputVec<Scalar> u : us) {
@@ -59,35 +58,67 @@ class RigidBody {
             Vec3<Scalar> aa_vec = 0.5 * dt * (omega0 + omega1);
 
             // Map to a quaternion via exponential map
+            // TODO this probably has problems...
             Scalar angle = aa_vec.norm();
-            Vec3<Scalar> axis = aa_vec.normalized();
-            Eigen::AngleAxis<Scalar> aa(angle, axis);
-            Eigen::Quaternion<Scalar> qw(aa);
+            Vec3<Scalar> axis = aa_vec / angle;
+            Scalar c = cos(0.5 * angle);
+            Scalar s = sin(0.5 * angle);
+            // Eigen::AngleAxis<Scalar> aa(angle, axis);
+            // Eigen::Quaternion<Scalar> qw(aa);
+            Eigen::Quaternion<Scalar> qw(c, s * a(0), s * a(1), s * a(2));
             Eigen::Quaternion<Scalar> q1 = qw * q0;
 
-            x << r1, q1, v1, omega1;
+            x << r1, q1.coeffs(), v1, omega1;
 
             xs.push_back(x);
         }
         return xs;
     }
 
-   private:
-    Vec3<Scalar> position(const StateVec<Scalar>& x) const {
+    static StateVec<Scalar> zero_state() {
+        StateVec<Scalar> x = StateVec<Scalar>::Zero();
+        x(6) = 1; // w of quaternion
+        return x;
+    }
+
+    static Vec3<Scalar> orientation_error(const Eigen::Quaternion<Scalar>& q,
+                                          const Eigen::Quaternion<Scalar>& qd) {
+        // Vector part of qd.inverse() * q. We implement it manually here to
+        // avoid code branches (that check numerical stability) that AD cannot
+        // deal with.
+        return qd.w() * q.vec() - q.w() * qd.vec() - qd.vec().cross(q.vec());
+    }
+
+    static StateErrorVec<Scalar> state_error(const StateVec<Scalar>& x,
+                                             const StateVec<Scalar>& xd) {
+        Eigen::Quaternion<Scalar> q = orientation(x);
+        Eigen::Quaternion<Scalar> qd = orientation(xd);
+
+        StateErrorVec<Scalar> e;
+        e << position(xd) - position(x),
+            orientation_error(q, qd),
+            linear_velocity(xd) - linear_velocity(x),
+            angular_velocity(xd) - angular_velocity(x);
+        return e;
+    }
+
+    static Vec3<Scalar> position(const StateVec<Scalar>& x) {
         return x.head(3);
     }
 
-    Vec3<Scalar> orientation(const StateVec<Scalar>& x) const {
-        return x.segment(3, 4);
+    static Eigen::Quaternion<Scalar> orientation(const StateVec<Scalar>& x) {
+        Eigen::Quaternion<Scalar> q;
+        q.coeffs() << x.segment(3, 4);
+        return q;
     }
 
     // Get linear velocity component of the state
-    Vec3<Scalar> linear_velocity(const StateVec<Scalar>& x) const {
+    static Vec3<Scalar> linear_velocity(const StateVec<Scalar>& x) {
         return x.segment(7, 3);
     }
 
     // Get angular velocity component of the state
-    Vec3<Scalar> angular_velocity(const StateVec<Scalar>& x) const {
+    static Vec3<Scalar> angular_velocity(const StateVec<Scalar>& x) {
         return x.segment(10, 3);
     }
 

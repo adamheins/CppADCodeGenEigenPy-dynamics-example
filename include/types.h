@@ -15,6 +15,9 @@ template <typename Scalar>
 using StateVec = Eigen::Matrix<Scalar, STATE_DIM, 1>;
 
 template <typename Scalar>
+using StateErrorVec = Eigen::Matrix<Scalar, 2 * INPUT_DIM, 1>;
+
+template <typename Scalar>
 using InputVec = Eigen::Matrix<Scalar, INPUT_DIM, 1>;
 
 // Note that we need to specify row-major here to match the

@@ -23,48 +23,63 @@ struct RolloutCostModel : public ad::ADModel<Scalar> {
     using typename ad::ADModel<Scalar>::ADVector;
     using typename ad::ADModel<Scalar>::ADMatrix;
 
-    // Generate the input to the function
-    // In this example, the input is the force and torque at each timestep
-    ADVector input() const override { return ADVector::Ones(NUM_INPUT); }
+    ADVector input() const override {
+        // Input is the initial state and the force and torque at each timestep
+        ADVector inp = ADVector::Ones(STATE_DIM + NUM_INPUT);
+        inp.head(STATE_DIM) = RigidBody<ADScalar>::zero_state();
+        return inp;
+    }
 
     ADVector parameters() const override {
-        // Parameter is the initial state
-        ADVector x0(STATE_DIM);
-        // clang-format: off
-        x0 << ADVector::Ones(3),               // position
-            ADVector::Zero(3), ADScalar(1.0),  // orientation (quaternion)
-            ADVector::Ones(6);                 // twist
-        // clang-format: on
-        return x0;
+        // Parameters consist of mass (1), inertia (9), and desired states
+        // (STATE_DIM * NUM_TIME_STEPS)
+        ADScalar mass(1.0);
+        Mat3<ADScalar> inertia = Mat3<ADScalar>::Identity();
+
+        ADVector p(1 + 9 + STATE_DIM * NUM_TIME_STEPS);
+
+        p(0) = mass;
+        p.segment(1, 9) = Eigen::Map<ADVector>(inertia.data(), 9, 1);
+
+        StateVec<ADScalar> x0 = RigidBody<ADScalar>::zero_state();
+        for (int i = 0; i < NUM_TIME_STEPS; ++i) {
+            p.segment(10 + i * STATE_DIM, STATE_DIM) = x0;
+        }
+        return p;
     }
 
-    // Get initial state from parameter vector
-    ADVector initial_state(const ADVector& parameters) const {
-        return parameters.head(STATE_DIM);
+    static ADScalar get_mass(const ADVector& parameters) {
+        return parameters(0);
     }
 
-    ADVector desired_state(const ADVector& parameters) const {
-        return parameters.tail(NUM_TIME_STEPS * STATE_DIM);
-    }
-
-    Scalar get_mass(const ADVector& parameters) const { return parameters(0); }
-
-    Mat3<ADScalar> get_inertia(const ADVector& parameters) const {
+    static Mat3<ADScalar> get_inertia(const ADVector& parameters) {
         ADVector inertia_vec = parameters.segment(1, 3 * 3);
         Eigen::Map<Mat3<ADScalar>> inertia(inertia_vec.data(), 3, 3);
         return inertia;
     }
 
-    std::vector<StateVec<ADScalar>> get_desired_states(
-        const ADVector& parameters) {}
+    static std::vector<StateVec<ADScalar>> get_desired_states(
+        const ADVector& parameters) {
+        const size_t start_idx = 10;
+        std::vector<StateVec<ADScalar>> xds;
+        for (size_t i = 0; i < NUM_TIME_STEPS; ++i) {
+            xds.push_back(
+                parameters.segment(start_idx + i * STATE_DIM, STATE_DIM));
+        }
+        return xds;
+    }
 
-    StateVec<ADScalar> get_initial_state(const ADVector& input) {
+    static StateVec<ADScalar> get_initial_state(const ADVector& input) {
         return input.head(STATE_DIM);
     }
 
-    std::vector<InputVec<ADScalar>> get_wrenches(const ADVector& input) {
+    static std::vector<InputVec<ADScalar>> get_wrenches(const ADVector& input) {
+        const size_t start_idx = STATE_DIM;
         std::vector<InputVec<ADScalar>> us;
-        // TODO
+        for (size_t i = 0; i < NUM_TIME_STEPS; ++i) {
+            us.push_back(
+                input.segment(start_idx + i * INPUT_DIM, INPUT_DIM));
+        }
         return us;
     }
 
@@ -88,14 +103,15 @@ struct RolloutCostModel : public ad::ADModel<Scalar> {
             body.rollout(x0, us, ADScalar(TIMESTEP), NUM_TIME_STEPS);
 
         // Compute cost
-        // TODO need to compute state error vector
         ADVector cost = ADVector::Zero(1);
-
         for (int i = 0; i < NUM_TIME_STEPS; ++i) {
-            x_err = ...;
-            cost_i = 0.5 * (x_err.transpose() * x_err + 0.1 * u.transpose() * u);
+            StateErrorVec<ADScalar> x_err =
+                RigidBody<ADScalar>::state_error(xs[i], xds[i]);
 
-            cost(0) += cost_i
+            ADScalar step_cost =
+                ADScalar(0.5) * (x_err.dot(x_err) +
+                                 ADScalar(0.1) * us[i].dot(us[i]));
+            cost(0) += step_cost;
         }
         return cost;
     }

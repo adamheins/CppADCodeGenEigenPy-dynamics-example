@@ -1,7 +1,7 @@
 #include <CppADCodeGenEigenPy/ADModel.h>
 
 #include "dynamics_model.h"
-// #include "rollout_model.h"
+#include "rollout_model.h"
 
 namespace ad = CppADCodeGenEigenPy;
 
@@ -15,9 +15,7 @@ int main(int argc, char **argv) {
     std::string directory_path = argv[1];
 
     DynamicsModel<Scalar>().compile("DynamicsModel", directory_path,
-                           ad::DerivativeOrder::Second);
-
-    // RolloutModel<Scalar> rollout_model;
-    // rollout_model.compile("RolloutModel", directory_path,
-    //                       ad::DerivativeOrder::Second);
+                                    ad::DerivativeOrder::Second);
+    RolloutCostModel<Scalar>().compile("RolloutCostModel", directory_path,
+                                       ad::DerivativeOrder::Second);
 }
