@@ -41,7 +41,8 @@ struct DynamicsModel : public ad::ADModel<Scalar> {
     }
 
     /**
-     * Compute acceleration from current state and force input.
+     * Forward dynamics: compute acceleration from current state and force
+     * input.
      */
     ADVector function(const ADVector& input,
                       const ADVector& parameters) const override {
