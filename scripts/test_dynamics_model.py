@@ -1,5 +1,7 @@
 import os
 from functools import partial
+import time
+import timeit
 
 import numpy as np
 import jax
@@ -21,6 +23,7 @@ INPUT_DIM = 6
 # like build the parameter vector.
 class CppDynamicsModelWrapper:
     """Wrapper around C++ bindings for DynamicsModel."""
+
     def __init__(self, mass, inertia):
         lib_path = os.path.join(LIB_DIR, "lib" + DYNAMICS_MODEL_NAME)
         self._model = CompiledModel(DYNAMICS_MODEL_NAME, lib_path)
@@ -81,14 +84,24 @@ def main():
     u = np.ones(INPUT_DIM)
 
     # C++-based model which we bind to and load from a shared lib
+    t = time.time()
     cpp_model = CppDynamicsModelWrapper(mass, inertia)
-    A = cpp_model.evaluate(x, u)
     dfdx, dfdu = cpp_model.jacobians(x, u)
+    print(f"Time to load C++ model = {time.time() - t}")
 
     # jax-based model which is computed just in time
+    t = time.time()
     jax_model = JaxDynamicsModel(mass, inertia)
-    A_jax = jax_model.evaluate(x, u)
     dfdx_jax, dfdu_jax = jax_model.jacobians(x, u)
+    print(f"Time to load Jax model = {time.time() - t}")
+
+    acc_cpp = cpp_model.evaluate(x, u)
+    acc_jax = jax_model.evaluate(x, u)
+
+    assert np.isclose(acc_cpp, acc_jax).all(), "Forward dynamics result not the same between models"
+
+    print(timeit.timeit("cpp_model.jacobians(x, u)", number=100000, globals=locals()))
+    print(timeit.timeit("jax_model.jacobians(x, u)", number=100000, globals=locals()))
 
 
 if __name__ == "__main__":

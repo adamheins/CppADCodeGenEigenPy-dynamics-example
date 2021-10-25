@@ -15,6 +15,7 @@ struct RigidBody {
     // be applied in the inertial (world) frame.
     Vec6<Scalar> forward_dynamics(const StateVec<Scalar>& x,
                                   const InputVec<Scalar>& u) const {
+        // TODO need to compute inertia in the world frame
         Vec3<Scalar> force = u.head(3);
         Vec3<Scalar> torque = u.tail(3);
         Vec3<Scalar> v = linear_velocity(x);
@@ -57,19 +58,19 @@ struct RigidBody {
             // First term of the Magnus expansion
             Vec3<Scalar> aa_vec = 0.5 * dt * (omega0 + omega1);
 
-            // Map to a quaternion via exponential map
-            // TODO this probably has problems...
+            // Map to a quaternion via exponential map (note this
+            // implementation is not robust against numerical problems as angle
+            // -> 0)
             Scalar angle = aa_vec.norm();
             Vec3<Scalar> axis = aa_vec / angle;
             Scalar c = cos(0.5 * angle);
             Scalar s = sin(0.5 * angle);
-            // Eigen::AngleAxis<Scalar> aa(angle, axis);
-            // Eigen::Quaternion<Scalar> qw(aa);
-            Eigen::Quaternion<Scalar> qw(c, s * a(0), s * a(1), s * a(2));
+
+            Eigen::Quaternion<Scalar> qw;
+            qw.coeffs() << s * axis, c;
             Eigen::Quaternion<Scalar> q1 = qw * q0;
 
             x << r1, q1.coeffs(), v1, omega1;
-
             xs.push_back(x);
         }
         return xs;
@@ -77,7 +78,7 @@ struct RigidBody {
 
     static StateVec<Scalar> zero_state() {
         StateVec<Scalar> x = StateVec<Scalar>::Zero();
-        x(6) = 1; // w of quaternion
+        x(6) = 1;  // w of quaternion
         return x;
     }
 
@@ -95,8 +96,7 @@ struct RigidBody {
         Eigen::Quaternion<Scalar> qd = orientation(xd);
 
         StateErrorVec<Scalar> e;
-        e << position(xd) - position(x),
-            orientation_error(q, qd),
+        e << position(xd) - position(x), orientation_error(q, qd),
             linear_velocity(xd) - linear_velocity(x),
             angular_velocity(xd) - angular_velocity(x);
         return e;

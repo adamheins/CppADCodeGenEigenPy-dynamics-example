@@ -9,12 +9,8 @@
 
 namespace ad = CppADCodeGenEigenPy;
 
-// * recall that this is a **cost**
-// * input is the array of inputs
-// * paramters are mass, inertia, x0, xd's
-
 const double TIMESTEP = 0.1;
-const size_t NUM_TIME_STEPS = 10;
+const size_t NUM_TIME_STEPS = 1;
 const size_t NUM_INPUT = INPUT_DIM * NUM_TIME_STEPS;
 
 template <typename Scalar>
@@ -91,8 +87,6 @@ struct RolloutCostModel : public ad::ADModel<Scalar> {
         ADScalar mass = get_mass(parameters);
         Mat3<ADScalar> inertia = get_inertia(parameters);
 
-        // TODO recall there were problems with using fixed-sized matrices with
-        // AD
         std::vector<StateVec<ADScalar>> xds = get_desired_states(parameters);
         StateVec<ADScalar> x0 = get_initial_state(input);
         std::vector<InputVec<ADScalar>> us = get_wrenches(input);
