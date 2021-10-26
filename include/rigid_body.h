@@ -15,7 +15,11 @@ struct RigidBody {
     // be applied in the inertial (world) frame.
     Vec6<Scalar> forward_dynamics(const StateVec<Scalar>& x,
                                   const InputVec<Scalar>& u) const {
-        // TODO need to compute inertia in the world frame
+        // Compute inertia matrix rotated into the fixed world frame.
+        Mat3<Scalar> C_wo = orientation(x).toRotationMatrix();
+        Mat3<Scalar> Iw = C_wo * inertia * C_wo.transpose();
+        Mat3<Scalar> Iw_inv = C_wo * inertia_inv * C_wo.transpose();
+
         Vec3<Scalar> force = u.head(3);
         Vec3<Scalar> torque = u.tail(3);
         Vec3<Scalar> v = linear_velocity(x);
@@ -23,8 +27,7 @@ struct RigidBody {
 
         // Find acceleration from Newton-Euler equations
         Vec3<Scalar> a = force / mass;
-        Vec3<Scalar> alpha =
-            inertia_inv * (torque - omega.cross(inertia * omega));
+        Vec3<Scalar> alpha = Iw_inv * (torque - omega.cross(Iw * omega));
 
         Vec6<Scalar> A;
         A << a, alpha;

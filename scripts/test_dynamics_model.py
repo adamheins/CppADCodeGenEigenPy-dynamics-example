@@ -9,6 +9,8 @@ import jax.numpy as jnp
 
 from CppADCodeGenEigenPy import CompiledModel
 
+import util
+
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 LIB_DIR = SCRIPT_DIR + "/../lib"
@@ -60,14 +62,17 @@ class JaxDynamicsModel:
 
     @partial(jax.jit, static_argnums=(0,))
     def evaluate(self, x, u):
-        force, torque = u[:3], u[3:]
-        v = x[7:10]
-        omega = x[10:]
+        f, τ = u[:3], u[3:]
+        _, q, v, ω = util.decompose_state(x)
 
-        a = force / self.mass
-        alpha = self.inertia_inv @ (torque - jnp.cross(omega, self.inertia @ omega))
+        C_wo = util.quaternion_to_rotation_matrix(q)
+        Iw = C_wo @ self.inertia @ C_wo.T
+        Iw_inv = C_wo @ self.inertia_inv @ C_wo.T
 
-        return jnp.concatenate((a, alpha))
+        a = f / self.mass
+        α = Iw_inv @ (τ - jnp.cross(ω, Iw @ ω))
+
+        return jnp.concatenate((a, α))
 
     def jacobians(self, x, u):
         return self.dfdx(x, u), self.dfdu(x, u)
@@ -79,14 +84,13 @@ def main():
     inertia = np.eye(3)
 
     # state and input
-    x = np.zeros(STATE_DIM)
-    x[6] = 1  # for quaternion
+    x = util.zero_state()
     u = np.ones(INPUT_DIM)
 
     # C++-based model which we bind to and load from a shared lib
     t = time.time()
     cpp_model = CppDynamicsModelWrapper(mass, inertia)
-    dfdx, dfdu = cpp_model.jacobians(x, u)
+    dfdx_cpp, dfdu_cpp = cpp_model.jacobians(x, u)
     print(f"Time to load C++ model = {time.time() - t}")
 
     # jax-based model which is computed just in time
@@ -98,10 +102,19 @@ def main():
     acc_cpp = cpp_model.evaluate(x, u)
     acc_jax = jax_model.evaluate(x, u)
 
-    assert np.isclose(acc_cpp, acc_jax).all(), "Forward dynamics result not the same between models"
+    # check that both models actually get the same results
+    assert np.isclose(
+        acc_cpp, acc_jax
+    ).all(), "Forward dynamics result not the same between models"
+    assert np.isclose(dfdx_cpp, dfdx_jax).all(), "dfdx is not the same between models."
+    assert np.isclose(dfdu_cpp, dfdu_jax).all(), "dfdu is not the same between models."
 
-    print(timeit.timeit("cpp_model.jacobians(x, u)", number=100000, globals=locals()))
-    print(timeit.timeit("jax_model.jacobians(x, u)", number=100000, globals=locals()))
+    # compare runtime evaluation time of Jacobians
+    n = 100000
+    cpp_time = timeit.timeit("cpp_model.jacobians(x, u)", number=n, globals=locals())
+    jax_time = timeit.timeit("jax_model.jacobians(x, u)", number=n, globals=locals())
+    print(f"Time to evaluate C++ model jacobians {n} times = {cpp_time} sec")
+    print(f"Time to evaluate JAX model jacobians {n} times = {jax_time} sec")
 
 
 if __name__ == "__main__":

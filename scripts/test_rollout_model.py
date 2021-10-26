@@ -9,6 +9,8 @@ import jax.numpy as jnp
 
 from CppADCodeGenEigenPy import CompiledModel
 
+import util
+
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 LIB_DIR = SCRIPT_DIR + "/../lib"
@@ -51,15 +53,6 @@ class CppRolloutCostModelWrapper:
         return dfdx0, dfdus
 
 
-def decompose_state(x):
-    """Decompose state into position, orientation, linear and angular velocity."""
-    r = x[:3]
-    q = x[3:7]
-    v = x[7:10]
-    ω = x[10:]
-    return r, q, v, ω
-
-
 def orientation_error(q, qd):
     """Error between two quaternions."""
     # This is the vector portion of qd.inverse() * q
@@ -67,8 +60,9 @@ def orientation_error(q, qd):
 
 
 def state_error(x, xd):
-    r, q, v, ω = decompose_state(x)
-    rd, qd, vd, ωd = decompose_state(xd)
+    """Error between actual state x and desired state xd."""
+    r, q, v, ω = util.decompose_state(x)
+    rd, qd, vd, ωd = util.decompose_state(xd)
 
     r_err = rd - r
     q_err = orientation_error(q, qd)
@@ -78,14 +72,8 @@ def state_error(x, xd):
     return jnp.concatenate((r_err, q_err, v_err, ω_err))
 
 
-def quaternion_multiply(q0, q1):
-    v0, w0 = q0[:3], q0[3]
-    v1, w1 = q1[:3], q1[3]
-    return jnp.append(w0 * v1 + w1 * v0 + jnp.cross(v0, v1), w0 * w1 - v0 @ v1)
-
-
 def integrate_state(x0, A, dt):
-    r0, q0, v0, ω0 = decompose_state(x0)
+    r0, q0, v0, ω0 = util.decompose_state(x0)
     a, α = A[:3], A[3:]
 
     r1 = r0 + dt * v0 + 0.5 * dt ** 2 * a
@@ -100,7 +88,7 @@ def integrate_state(x0, A, dt):
     c = jnp.cos(0.5 * angle)
     s = jnp.sin(0.5 * angle)
     qw = jnp.append(s * axis, c)
-    q1 = quaternion_multiply(qw, q0)
+    q1 = util.quaternion_multiply(qw, q0)
 
     return jnp.concatenate((r1, q1, v1, ω1))
 
@@ -117,10 +105,14 @@ class JaxRolloutCostModel:
     @partial(jax.jit, static_argnums=(0,))
     def forward_dynamics(self, x, u):
         f, τ = u[:3], u[3:]
-        _, _, v, ω = decompose_state(x)
+        _, q, v, ω = util.decompose_state(x)
+
+        C_wo = util.quaternion_to_rotation_matrix(q)
+        Iw = C_wo @ self.inertia @ C_wo.T
+        Iw_inv = C_wo @ self.inertia_inv @ C_wo.T
 
         a = f / self.mass
-        α = self.inertia_inv @ (τ - jnp.cross(ω, self.inertia @ ω))
+        α = Iw_inv @ (τ - jnp.cross(ω, Iw @ ω))
 
         return jnp.concatenate((a, α))
 
@@ -151,12 +143,6 @@ class JaxRolloutCostModel:
         return self.dfdx0(x0, us, xds), self.dfdus(x0, us, xds)
 
 
-def zero_state():
-    x = np.zeros(STATE_DIM)
-    x[6] = 1  # for quaternion
-    return x
-
-
 def main():
     np.random.seed(0)
 
@@ -165,13 +151,13 @@ def main():
     inertia = np.eye(3)
 
     # initial state
-    x0 = zero_state()
+    x0 = util.zero_state()
 
     # force/torque inputs
     us = np.random.random((NUM_TIME_STEPS, INPUT_DIM))
 
     # desired states
-    xd = zero_state()
+    xd = util.zero_state()
     xd[:3] = [1, 1, 1]  # want body to move position
     xds = np.tile(xd, (NUM_TIME_STEPS, 1))
 
@@ -192,10 +178,14 @@ def main():
 
     # check that both models actually get the same results
     assert np.isclose(cost_cpp, cost_jax), "Cost is not the same between models."
-    assert np.isclose(dfdx0_cpp, dfdx0_jax).all(), "dfdx0 is not the same between models."
-    assert np.isclose(dfdus_cpp, dfdus_jax).all(), "dfdus is not the same between models."
+    assert np.isclose(
+        dfdx0_cpp, dfdx0_jax
+    ).all(), "dfdx0 is not the same between models."
+    assert np.isclose(
+        dfdus_cpp, dfdus_jax
+    ).all(), "dfdus is not the same between models."
 
-    # compare runtime evaluation time
+    # compare runtime evaluation time of Jacobians
     n = 100000
     cpp_time = timeit.timeit(
         "cpp_model.jacobians(x0, us, xds)", number=n, globals=locals()
