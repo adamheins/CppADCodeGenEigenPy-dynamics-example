@@ -11,6 +11,10 @@ from CppADCodeGenEigenPy import CompiledModel
 
 import util
 
+# use 64-bit floating point numbers with jax to match the C++ model
+# otherwise, small numerical precision errors can cause model mismatch
+jax.config.update("jax_enable_x64", True)
+
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 LIB_DIR = SCRIPT_DIR + "/../lib"
@@ -20,7 +24,7 @@ STATE_DIM = 7 + 6
 INPUT_DIM = 6
 
 # NOTE these are currently fixed on the C++ side
-NUM_TIME_STEPS = 1
+NUM_TIME_STEPS = 10
 TIMESTEP = 0.1
 
 
@@ -140,7 +144,7 @@ class JaxRolloutCostModel:
         return cost
 
     def jacobians(self, x0, us, xds):
-        return self.dfdx0(x0, us, xds), self.dfdus(x0, us, xds)
+        return self.dfdx0(x0, us, xds), self.dfdus(x0, us, xds).flatten()
 
 
 def main():
@@ -175,6 +179,9 @@ def main():
 
     cost_cpp = cpp_model.evaluate(x0, us, xds)
     cost_jax = jax_model.evaluate(x0, us, xds)
+
+    # import IPython
+    # IPython.embed()
 
     # check that both models actually get the same results
     assert np.isclose(cost_cpp, cost_jax), "Cost is not the same between models."
