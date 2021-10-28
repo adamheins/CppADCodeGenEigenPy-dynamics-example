@@ -42,7 +42,7 @@ make compiler
 make model
 ```
 
-Install required Python dependencies:
+Install required Python dependencies (note that Python 3 is expected):
 ```
 pip install -r requirements.txt
 ```
