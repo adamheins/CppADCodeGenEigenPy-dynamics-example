@@ -4,8 +4,6 @@ BIN_DIR=bin
 LIB_DIR=lib
 COMPILER_BIN=$(BIN_DIR)/compile_model
 COMPILER_SRC=$(SRC_DIR)/compile_model.cpp
-MODEL_NAME=ForwardRolloutModel
-MODEL_LIB=$(LIB_DIR)/lib$(MODEL_NAME).so
 
 INCLUDE_DIRS=-I/usr/local/include/eigen3 -Iinclude
 CPP_FLAGS=-std=c++11
