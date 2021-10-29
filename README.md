@@ -41,6 +41,8 @@ make compiler
 # (which is shared object .so file)
 make model
 ```
+If you get an error about not being able to find an Eigen header, you may have
+to change the path to the Eigen include directory in the Makefile.
 
 Install required Python dependencies (note that Python 3 is expected):
 ```
