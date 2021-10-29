@@ -23,7 +23,8 @@ ROLLOUT_COST_MODEL_NAME = "RolloutCostModel"
 STATE_DIM = 7 + 6
 INPUT_DIM = 6
 
-# NOTE these are currently fixed on the C++ side
+# NOTE these are currently fixed on the C++ side, and need to be set to the
+# same values here
 NUM_TIME_STEPS = 10
 TIMESTEP = 0.1
 
@@ -77,6 +78,7 @@ def state_error(x, xd):
 
 
 def integrate_state(x0, A, dt):
+    """Integrate state x0 given acceleration A over timestep dt."""
     r0, q0, v0, ω0 = util.decompose_state(x0)
     a, α = A[:3], A[3:]
 
@@ -98,6 +100,8 @@ def integrate_state(x0, A, dt):
 
 
 class JaxRolloutCostModel:
+    """Equivalent cost model in Python with JAX."""
+
     def __init__(self, mass, inertia):
         self.mass = mass
         self.inertia = inertia
@@ -121,6 +125,8 @@ class JaxRolloutCostModel:
         return jnp.concatenate((a, α))
 
     def evaluate(self, x0, us, xds):
+        """Compute the cost."""
+
         def state_func(x, u):
             A = self.forward_dynamics(x, u)
             x = integrate_state(x, A, TIMESTEP)
@@ -144,6 +150,7 @@ class JaxRolloutCostModel:
         return cost
 
     def jacobians(self, x0, us, xds):
+        """Compute Jacobians of cost wrt initial state x0 and inputs us."""
         return self.dfdx0(x0, us, xds), self.dfdus(x0, us, xds).flatten()
 
 
@@ -179,9 +186,6 @@ def main():
 
     cost_cpp = cpp_model.evaluate(x0, us, xds)
     cost_jax = jax_model.evaluate(x0, us, xds)
-
-    # import IPython
-    # IPython.embed()
 
     # check that both models actually get the same results
     assert np.isclose(cost_cpp, cost_jax), "Cost is not the same between models."

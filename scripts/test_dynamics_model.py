@@ -52,6 +52,8 @@ class CppDynamicsModelWrapper:
 
 
 class JaxDynamicsModel:
+    """Equivalent rigid body dynamics model in Python with JAX."""
+
     def __init__(self, mass, inertia):
         self.mass = mass
         self.inertia = inertia
@@ -62,6 +64,11 @@ class JaxDynamicsModel:
 
     @partial(jax.jit, static_argnums=(0,))
     def evaluate(self, x, u):
+        """Compute forward dynamics.
+
+        Returns the acceleration based on the provided state x and force input
+        u.
+        """
         f, τ = u[:3], u[3:]
         _, q, v, ω = util.decompose_state(x)
 
@@ -75,6 +82,7 @@ class JaxDynamicsModel:
         return jnp.concatenate((a, α))
 
     def jacobians(self, x, u):
+        """Compute Jacobian of forward dynamics wrt x and u."""
         return self.dfdx(x, u), self.dfdu(x, u)
 
 
