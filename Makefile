@@ -22,4 +22,8 @@ model:
 	@mkdir -p $(LIB_DIR)
 	./$(COMPILER_BIN) $(LIB_DIR)
 
-
+# clean up
+.PHONY: clean
+clean:
+	@rm -rf $(BIN_DIR)
+	@rm -rf $(LIB_DIR)
