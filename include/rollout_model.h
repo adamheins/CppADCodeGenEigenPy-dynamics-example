@@ -10,7 +10,7 @@
 namespace ad = CppADCodeGenEigenPy;
 
 const double TIMESTEP = 0.1;
-const size_t NUM_TIME_STEPS = 1;
+const size_t NUM_TIME_STEPS = 10;
 const size_t NUM_INPUT = INPUT_DIM * NUM_TIME_STEPS;
 
 template <typename Scalar>

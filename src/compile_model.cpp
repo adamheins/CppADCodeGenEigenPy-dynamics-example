@@ -15,7 +15,7 @@ int main(int argc, char **argv) {
     std::string directory_path = argv[1];
 
     DynamicsModel<Scalar>().compile("DynamicsModel", directory_path,
-                                    ad::DerivativeOrder::Second);
+                                    ad::DerivativeOrder::First);
     RolloutCostModel<Scalar>().compile("RolloutCostModel", directory_path,
-                                       ad::DerivativeOrder::Second);
+                                       ad::DerivativeOrder::First);
 }

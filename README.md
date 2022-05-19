@@ -41,8 +41,10 @@ make compiler
 # (which is shared object .so file)
 make model
 ```
+If you get an error about not being able to find an Eigen header, you may have
+to change the path to the Eigen include directory in the Makefile.
 
-Install required Python dependencies:
+Install required Python dependencies (note that Python 3 is expected):
 ```
 pip install -r requirements.txt
 ```
@@ -55,3 +57,8 @@ python scripts/test_rollout_model.py
 These scripts print information about the execution time for the compiled model
 and the equivalent JAX model, and assert that both models produce equivalent
 results.
+
+On my system, loading the C++ `RolloutCostModel` takes under 1 millisecond,
+whereas the equivalent JAX model takes about 5 seconds, since it has to JIT
+compile each time the script is run. After the initial compilation, evaluating
+the Jacobians is also about an order of magnitude faster using the C++ model.
