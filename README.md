@@ -1,3 +1,5 @@
+This repo has been archived because it has been included directly into the [CppADCodeGenEigenPy](https://github.com/adamheins/CppADCodeGenEigenPy) project (in the `examples/` directory).
+
 # CppADCodeGenEigenPy Dynamics Example
 
 This repo shows an example of using
